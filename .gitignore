@@ -1,0 +1,14 @@
+# IDE settings
+.idea
+*.xml
+
+*.txt
+*.csv
+*.tab
+*.xlsx
+*.RData
+*.graphml
+*.pdf
+*.Rproj*
+*.Rhistory
+*.err
