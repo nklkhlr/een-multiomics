@@ -1,8 +1,8 @@
-# Multi-omics EEN Analysis Presented in [Häcker and Siebert et al.]()
+# Multi-omics EEN Analysis Presented in [Häcker and Siebert et al.](https://www.medrxiv.org/content/10.1101/2023.12.21.23300351v1)
 
 ## Prerequisites
 
-The code in this repository was tested with R version 4.2.1 and python version 
+The code in this repository was tested with R version 4.2.1 and python version
 3.8.11.
 
 For required `R` packages and the used versions please see `seesionInfo.txt`
@@ -51,7 +51,7 @@ The required scripts are wrapped in `run_network_plotting.sh` and can be run via
 bash run_newtork_plotting.sh
 ```
 
-For parameter information please use 
+For parameter information please use
 
 ```shell
 Rscript community_network_plotting/community_network_data.R --help
