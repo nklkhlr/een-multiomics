@@ -5,7 +5,7 @@
 The code in this repository was tested with R version 4.2.1 and python version
 3.8.11.
 
-For required `R` packages and the used versions please see `seesionInfo.txt`
+For required `R` packages and the used versions please see `sessionInfo.txt`
 
 For required `python` packages and the used versions please see
 `requirements.txt`
