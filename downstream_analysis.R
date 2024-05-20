@@ -2,6 +2,8 @@ source("multi_omics.R")
 
 library(argparse)
 
+set.seed(123)
+
 # =========
 # Functions
 # =========
@@ -85,6 +87,7 @@ community_analysis <- function(
     loading_plot <- plot_cv_loadings(cv_loadings) +
       theme_pubr() +
       scale_colour_d3("category10")
+    loading_data <- loading_plot$data
   } else {
     # compute ROC-AUC evaluation on communities only. In principle this works
     # the same way as the above evaluation
@@ -133,6 +136,7 @@ community_analysis <- function(
       scale_color_d3("category10")
     loading_plot <- ggarrange(
       met_loading_plot, mic_loading_plot)
+    loading_data <- rbind(met_loading_plot$data, mic_loading_plot$data)
   }
 
   # save all plots computed above
@@ -150,6 +154,10 @@ community_analysis <- function(
     filename=paste0(base_path, "_loadings.pdf"),
     width=16, height=9, device="pdf", plot=loading_plot
   )
+
+  loading_data$name <- gsub(
+    "\\.\\.\\.*", "", rownames(loading_data))
+  write.csv(loading_data, file=paste0(base_path, "_loadings.csv"))
 
   if (!is.null(roc_eval$mean_curve)) {
     # if iterations don't have the same number of thresholds recored for the ROC
@@ -170,6 +178,13 @@ community_analysis <- function(
       )
     }
   }
+
+  return(
+    random_community_test(
+      features_by_modality$metabolites, features_by_modality$mics,
+      combined$normalised, mgs_data, timepoint, 500
+    )
+  )
 }
 
 # ==========
@@ -283,7 +298,8 @@ ggsave(filename=paste0(pargs$result_path, "/een_posteen_selection_subset_pca.pdf
 
 
 ### Correlation network
-comm_file <- paste0(pargs$result_path, "/een_posteen_communities.RData")
+# comm_file <- paste0(pargs$result_path, "/een_posteen_communities.RData")
+comm_file <- paste0(pargs$result_path, "/een_posteen_communities_well_annot.RData")
 if (!file.exists(comm_file)) {
   # Spearman's rank-based correlation network. See `correlation_network.R`
   net <- correlation_network(
@@ -358,6 +374,7 @@ community_analysis(
 )
 
 # evaluate and plot communities
+empirical_pvalues <- list()
 for (i in seq_along(communities)) {
 
   comm <- communities[[i]]
@@ -366,8 +383,14 @@ for (i in seq_along(communities)) {
   cat("Community ", i, "\n")
 
   subg <- induced_subgraph(net$network, comm)
-  community_analysis(
+  pval <- community_analysis(
     pargs, subg, net, zotu_data, combined, var_een, timepoint,
     shapes, node_names, first_name_map, mic_annotation, i
   )
+  empirical_pvalues[[paste0("Community", i)]] <- pval
 }
+write.csv(
+  as.data.frame(empirical_pvalues),
+  file=paste0(pargs$result_path, "/", "empirical_pvalues.csv")
+)
+

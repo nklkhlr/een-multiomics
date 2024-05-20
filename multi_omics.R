@@ -13,9 +13,27 @@ load("Data/metabolomics_data.RData")
 load("Data/metabolomics_meta.RData")
 
 
+set.seed(123)
+
+
 # =============== #
 #### Functions ####
 # =============== #
+subset_by_splsda_ <- function(splsda_obj, met, mic) {
+  met_feats <- rownames(splsda_obj$loadings$Metabolome)[
+    rowSums(splsda$loadings$Metabolome) > 0]
+  mic_feats <- rownames(splsda_obj$loadings$zOTU)[
+    rowSums(splsda_obj$loadings$zOTU) > 0]
+  sample_names <- intersect(colnames(met), colnames(mic))
+
+  return(
+    list(
+      Metabolome=met[met_feats, sample_names],
+      zOTU=mic[mic_feats, sample_names]
+    )
+  )
+}
+
 
 #' Plot average roc curves and mark the minimum and maximum
 #' interval.
@@ -245,6 +263,54 @@ roc_test_community_features <- function(
   return(list(roc=rocs, model=models))
 }
 
+
+extract_auc_ <- function(test_results) {
+  auc_ <- test_results$roc$Resample1$auc
+  if (is.null(auc_)) {
+    return(sapply(test_results$roc$Resample1, function(x) x$auc))
+  }
+  return(auc_)
+}
+
+
+#' Performed random label permutation tests on community features
+#' Parameters are the same as for roc_test_community_features except for the
+#' ones described below
+#'
+#' @paaram nrepeats The number of random permutations to perform
+#' @param cpus The number of threads to use for parallelization
+random_community_test <- function(
+  metabolites, microbes, met_data, mic_data, targets, nrepeats=200, cpus=1
+) {
+  true_auc <- roc_test_community_features(
+    metabolites, microbes, met_data, mic_data, targets, 1) %>%
+    extract_auc_
+
+  if (cpus == 1) {
+    loop_fun <- sapply
+  } else {
+    plan(multisession, workers=cpus)
+    loop_fun <- future_sapply
+  }
+
+  rand_aucs <- loop_fun(
+    1:nrepeats,
+    function(i) {
+      rand_labels <- sample(targets)
+      roc_test_community_features(
+        metabolites, microbes, met_data, mic_data, rand_labels, 1) %>%
+        extract_auc_
+    }
+  )
+
+  if (is.vector(true_auc)) return(rowMeans(true_auc > rand_aucs))
+
+  if (length(metabolites) < 2)
+    return(c(Metabolome=NaN, zOTU=mean(true_auc > rand_aucs)))
+  return(c(Metabolome=mean(true_auc < rand_aucs), zOTU=NaN))
+}
+
+
 # TOOD: add in statistical tests
 #' Plot the 'expression' of all features of a community in boxplots
 # TODO: proper documentation
@@ -320,8 +386,8 @@ if (sys.nframe() == 0) {
   # * zotu_annotation (taxonomic annotation for zOTUs)
   load(pargs$microbiome_file)
   # NOTE: change this if you want to use annotation on a different level
-  mic_annotation <- zotu_annotation$Genus
-  names(mic_annotation) <-
+  mic_annotation <- zotu_annotation$`Genus|Species`
+  names(mic_annotation) <- rownames(zotu_annotation)
 
   # make sure results dir is existing or create it
   if (dir.exists(pargs$result_path)) {
@@ -430,7 +496,7 @@ if (sys.nframe() == 0) {
     zotu_data, mic_annotation, timepoint, subsamples, healing,
     file=paste0(pargs$result_path, "/", "processed_data.RData")
   )
-
+  stop("stop")
   if (is.null(keepX)) {
     # NOTE: this is now set via CLI args (see lines 317 ff)
     #        unfortunately there is no good way to get an approximation
@@ -586,5 +652,20 @@ if (sys.nframe() == 0) {
     loading_plots$Metabolome$plot + theme_pubr() + scale_fill_d3("category10"),
     loading_plots$Microbiome$plot + theme_pubr() + scale_fill_d3("category10")
   )
+
+  # computing empirical p-value with label permutations
+  feat_subset <- subset_by_splsda(splsda, reduced$z_score, zotu_data$clr)
+  rand_eval <- eval.rand.block(
+    splsda,
+    X=list(Metabolome=feat_subset$Metabolome, zOTU=feat_subset$zOTU),
+    y=timepoint,
+    Xtest=list(
+      Metabolome=t(reduced$z_score[,split$test]),
+      zOTU=t(zotu_data$clr[,split$test])
+    ),
+    ytest=timepoint[split$test],
+    n=200, plsda.fun=block.plsda, consensus=TRUE, n.comp=1, cpus=4
+  )
+  cat("Empirical p-value: ", rand_eval$consensus$p.vals$p_value, "\n")
 
 }

@@ -5,6 +5,7 @@ library(dplyr)
 library(ggplot2)
 library(ggpubr)
 library(caret)
+library(pROC)
 
 Rcpp::sourceCpp("PLSDA/roc_curve.cpp")
 
@@ -122,29 +123,24 @@ randomised_plsda <- function(data, labels, cpus=1,
                              consensus=TRUE,
                              ptrain_=.7, ...) {
   if (cpus > 1) {
-    # multiprocessing case
     plan(multisession, workers=cpus)
     future_lapply(1:n,
                   function(i){
-                    # ranodmize labels
                     rand.labels <- sample(labels)
                     # names(rand.labels) <- NULL
-                    # train-test splitting
                     split_ <- train_test_split(names(rand.labels), ptrain_)
                     train_data_ <- lapply(
-                      data, function(x_) x_[split_$train,]
+                      data, function(x_) t(x_[,split_$train])
                     )
-                    # compute model on train samples
                     rand.plsda <- plsda.fun(
-                      X=train_data, Y=rand.labels[split$train],
+                      X=train_data_, Y=rand.labels[split_$train],
                       ncomp=ncomp, ...
                     )
-                    # extract test data and compute AUCs
                     test_data_ <- lapply(
-                      data, function(x_) x_[split_$test,]
+                      data, function(x_) t(x_[,split_$test])
                     )
                     if (consensus) {
-                      pred <- predict(rand.plsda, test_data)
+                      pred <- predict(rand.plsda, test_data_)
                       return(
                         consensus_auc(y=rand.labels[split_$test],
                                       prediction=pred, dims=1:ncomp)
@@ -155,24 +151,23 @@ randomised_plsda <- function(data, labels, cpus=1,
                                  plot=FALSE, print=FALSE))
                   })
   } else {
-    # steps are the same as in the multiprocessing option above
     lapply(1:n,
            function(i){
              rand.labels <- sample(labels)
              # names(rand.labels) <- NULL
              split_ <- train_test_split(names(rand.labels), ptrain_)
              train_data_ <- lapply(
-               data, function(x_) x_[split_$train,]
+               data, function(x_) t(x_[,split_$train])
              )
              rand.plsda <- plsda.fun(
-               X=train_data, Y=rand.labels[split$train],
+               train_data_, rand.labels[split_$train],
                ncomp=ncomp, ...
              )
              test_data_ <- lapply(
-               data, function(x_) x_[split_$test,]
+               data, function(x_) t(x_[,split_$test])
              )
              if (consensus) {
-               pred <- predict(rand.plsda, test_data)
+               pred <- predict(rand.plsda, test_data_)
                return(
                  consensus_auc(y=rand.labels[split_$test],
                                prediction=pred, dims=1:ncomp)
@@ -188,15 +183,13 @@ randomised_plsda <- function(data, labels, cpus=1,
 # TODO: consensus roc
 single.block.aucs <- function(true.auc, rand.auc, block.name,
                               groups, n, consensus=TRUE) {
-  n.comps <- length(true.auc[[block.name]])
+  if (is.null(n.comps)) n.comps <- length(true.auc[[block.name]])
   groups <- rownames(true.auc[[block.name]][[1]])
   n.groups <- length(groups)
-  print(n.comps)
   # arrange randomised AUC values
   if (consensus) {
     browser()
     auc.df <- data.frame(t(data.frame(rand.auc[[block.name]])))
-    print(auc.df)
     rownames(auc.df) <- 1:nrow(auc.df)
     colnames(auc.df) <- paste("Comp", 1:n.comps, sep="")
     total.rands <- tidyr::pivot_longer(auc.df, colnames(auc.df),
@@ -238,7 +231,7 @@ single.block.aucs <- function(true.auc, rand.auc, block.name,
     emp.p.vals$Component <- rownames(emp.p.vals)
     emp.p.vals <-  pivot_longer(emp.p.vals, -Component,
                                 values_to="p_value", names_to="Group") %>%
-      mutate(p_value=paste("p", formatC(.$p_value, format="f", digits=3), sep=" = "))
+      mutate(p_value=paste("p", formatC(.$p_value, format="f", digits=2), sep=" = "))
 
     # plotting
     pivot_longer(as.data.frame(total.rands), -Component,
@@ -284,13 +277,15 @@ single.block.aucs <- function(true.auc, rand.auc, block.name,
 
 consensus_auc <- function(y, prediction, dims=c(1, 2), step_size=.001) {
   return(
-      sapply(
+    sapply(
       dims,
       function(x) {
-        roc <- roc_curve(prediction$AveragedPredict[,,x],
-                         y=as.integer(as.factor(y)) - 1,
-                         positive_column=1, step_size=step_size)
-        auc(roc)
+        roc_ <- roc(
+          predictor=prediction$AveragedPredict[,,x][,2],
+          response=as.integer(as.factor(y)) - 1
+        )
+
+        return(roc_$auc)
       }
     )
   )
@@ -301,13 +296,15 @@ eval.rand.block <- function(plsda.obj, X, y,
                             n=100, cpus=1,
                             plsda.fun=block.splsda,
                             consensus=TRUE, ...) {
-  # plsda.fun <- getFunction(class(plsda.obj))
-  ncomp <- plsda.obj$ncomp
+  if (is.null(n.comp)) ncomp <- plsda.obj$ncomp
+  else ncomp <- n.comp
+
   if (is.list(ncomp) | is.vector(ncomp)) ncomp <- ncomp[1]
+
   rand.auc <- randomised_plsda(X, y,
                                plsda.fun=plsda.fun,
                                ncomp=ncomp,
-                               n, keepX=plsda.obj$keepX,
+                               n, # keepX=plsda.obj$keepX,
                                design=plsda.obj$design,
                                scheme=plsda.obj$scheme,
                                scale=plsda.obj$scale,
@@ -319,23 +316,23 @@ eval.rand.block <- function(plsda.obj, X, y,
   if (consensus) {
     pred <- predict(plsda.obj, Xtest)$AveragedPredict
     true.auc <- lapply(
-        1:dim(pred)[3],
-        function(x) {
-          roc <- roc_curve(pred[,,x],
-                           y=as.integer(as.factor(ytest)) - 1,
-                           positive_column=1, step_size=.001)
-          return(auc(roc))
-        }
+      1:ncomp,
+      function(x) {
+        roc_ <- roc(
+          predictor=pred[,,x][,2],
+          response=as.integer(as.factor(ytest)) - 1,
+        )
+        return(roc_$auc)
+      }
     )
   } else {
-      true.auc <- auroc(plsda.obj, newdata=Xtest, outcome.test=ytest,
-                        plot=FALSE, print=FALSE)
+    true.auc <- auroc(plsda.obj, newdata=Xtest, outcome.test=ytest,
+                      plot=FALSE, print=FALSE)
   }
 
-  blocks <- names(plsda.obj$keepX)
   if (consensus) {
     return(
-        list(
+      list(
         consensus=single.block.aucs(
           list(consensus=true.auc),
           list(consensus=rand.auc),
