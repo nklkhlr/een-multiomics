@@ -19,8 +19,7 @@ column_to_vector <- function(df, col) {
 
 #' Compute effect sizes of Diet and Activity over all features individually
 #' while correcting for Patient-specific effects with a linear mixed model of
-#' the form
-#' Feature ~ intercept + Diet + Activity + (1|Patient)
+#' the form `Feature ~ intercept + Diet + Activity + Diet * Activity + (1|Patient)`
 #'
 #' @param num_data Feature data with samples in rows. All columns will be tested
 #'                 individually
