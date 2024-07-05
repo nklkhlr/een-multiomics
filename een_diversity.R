@@ -45,9 +45,10 @@ plot_pca <- function(pca, group, ellipse=TRUE, shape=NULL, ...) {
           legend.text=element_text(size=26),
           legend.key.size=unit(3, "line")) -> p
     if (ellipse) {
-      p <- p + stat_ellipse(aes(fill=Group, colour=NULL),
-                            geom="polygon",
-                            alpha=.15)
+      p <- p + stat_ellipse(
+        aes(fill=Group, colour=NULL, shape=NULL),
+        geom="polygon", alpha=.15
+      )
     }
     return(p)
 }

@@ -12,3 +12,4 @@
 *.Rproj*
 *.Rhistory
 *.err
+.Rproj.user
