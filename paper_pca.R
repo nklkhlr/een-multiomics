@@ -127,7 +127,7 @@ meta <- data.frame(
   Patient=metadata[h_samples, "Patient"]
 )
 
-out <- activity_diet_lmm(total_pca$x, meta)
+out <- activity_diet_lmm(diet_pca$x, meta)
 pvals <- sapply(out, function(x) summary(x)$coefficients[,"Pr(>|t|)"])
 qvals <- t(apply(pvals, 1, p.adjust, method="bonferroni"))
 

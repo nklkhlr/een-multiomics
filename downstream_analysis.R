@@ -2,7 +2,7 @@ source("multi_omics.R")
 
 library(argparse)
 
-set.seed(123)
+set.seed(42)
 
 # =========
 # Functions
@@ -241,6 +241,14 @@ pargs <- tryCatch(
 # ============
 load(paste0(pargs$result_path, "/", "EEN_Post_EEN_selection.RData"))
 load(paste0(pargs$result_path, "/", "processed_data.RData"))
+load("Data/comparison_samples.RData", nenv <- new.env())
+
+subsamples <- as.character(rownames(nenv$comparison_samples))
+timepoint <- nenv$comparison_samples$`Diet (=PreEEN, EEN, PostEEN)`
+names(timepoint) <- subsamples
+
+mic_annotation <- nenv$zotu_annotation[,5]
+names(mic_annotation) <- rownames(nenv$zotu_annotation)
 
 # ====
 # Main
@@ -277,7 +285,7 @@ if (pargs$association_greater == "EEN") {
 metabolome_features <- rownames(var_een$data)[grep("^FT", rownames(var_een$data))]
 
 merged_data <- rbind(corrected_data$z_score[,subsamples],
-                     zotu_data[,subsamples])
+                     zotu_data$clr[,subsamples])
 
 # split labels => annotates samples by whether they belong to the train or test
 # set
