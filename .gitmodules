@@ -1,0 +1,3 @@
+[submodule "EEN-sPLSDA"]
+	path = EEN-sPLSDA
+	url = https://github.com/daisybio/EEN-sPLSDA.git
